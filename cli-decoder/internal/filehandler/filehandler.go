@@ -115,8 +115,8 @@ func NewJSONFilehandler() *JSONFilehandler {
 	h, f := loadhashes()
 
 	fh := &JSONFilehandler{}
-	fh.commonFilehandler.hashes = h
-	fh.commonFilehandler.hashesFile = f
+	fh.hashes = h
+	fh.hashesFile = f
 	fh.fileExtention = "json"
 
 	return fh
@@ -131,8 +131,8 @@ func NewXMLFilehandler() *XMLFilehandler {
 	h, f := loadhashes()
 
 	fh := &XMLFilehandler{}
-	fh.commonFilehandler.hashes = h
-	fh.commonFilehandler.hashesFile = f
+	fh.hashes = h
+	fh.hashesFile = f
 	fh.fileExtention = "xml"
 
 	return fh
