@@ -6,17 +6,25 @@ import (
 	"errors"
 	"io"
 	"log"
+	"sync"
+	"time"
 )
 
 // SessionManager keeps track of all sessions from creation, updating
 // to destroying.
 type SessionManager struct {
 	sessions map[string]Session
+	mu       sync.Mutex
 }
 
 // Session stores the session's data
 type Session struct {
 	Data map[string]interface{}
+	time time.Time
+}
+
+func (s *Session) Expired() bool {
+	return time.Since(s.time) > 5*time.Second
 }
 
 // NewSessionManager creates a new sessionManager
@@ -26,11 +34,29 @@ func NewSessionManager() *SessionManager {
 	}
 
 	// TODO run cleaner job here in a goroutine
+	go m.Cleaner()
+
 	return m
 }
 
 // TODO implement cleaner job function
 // you may use tickers from time package to execute job every second\2nd second etc.
+func (m *SessionManager) Cleaner() {
+	tk := time.NewTicker(time.Second)
+	defer tk.Stop()
+
+	for {
+		<-tk.C
+
+		m.mu.Lock()
+		for k, s := range m.sessions {
+			if s.Expired() {
+				delete(m.sessions, k)
+			}
+		}
+		m.mu.Unlock()
+	}
+}
 
 // CreateSession creates a new session and returns the sessionID
 func (m *SessionManager) CreateSession() (string, error) {
@@ -40,8 +66,12 @@ func (m *SessionManager) CreateSession() (string, error) {
 	}
 
 	// TODO use mutex
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.sessions[sessionID] = Session{
 		Data: make(map[string]interface{}),
+		time: time.Now(),
 	}
 
 	return sessionID, nil
@@ -55,6 +85,9 @@ var ErrSessionNotFound = errors.New("SessionID does not exists")
 // found, errors otherwise
 func (m *SessionManager) GetSessionData(sessionID string) (map[string]interface{}, error) {
 	// TODO use mutex
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	session, ok := m.sessions[sessionID]
 	if !ok {
 		return nil, ErrSessionNotFound
@@ -65,6 +98,9 @@ func (m *SessionManager) GetSessionData(sessionID string) (map[string]interface{
 // UpdateSessionData overwrites the old session data with the new one
 func (m *SessionManager) UpdateSessionData(sessionID string, data map[string]interface{}) error {
 	// TODO use mutex
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	_, ok := m.sessions[sessionID]
 	if !ok {
 		return ErrSessionNotFound
@@ -73,6 +109,7 @@ func (m *SessionManager) UpdateSessionData(sessionID string, data map[string]int
 	// Hint: you should renew expiry of the session here
 	m.sessions[sessionID] = Session{
 		Data: data,
+		time: time.Now(),
 	}
 
 	return nil
