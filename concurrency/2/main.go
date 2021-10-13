@@ -23,18 +23,32 @@ type User struct {
 // HandleRequest runs the processes requested by users. Returns false if process had to be killed
 func HandleRequest(process func(), u *User) bool {
 	// TODO: you need to modify only this function and implement logic that will return false for 2 levels of tasks.
-
-	start := time.Now()
-	process()
-	end := time.Now()
-
-	u.TimeUsed += int64(math.Round(end.Sub(start).Seconds()))
-
-	if u.TimeUsed < 10 {
+	if u.IsPremium {
 		return true
 	}
 
-	return false
+	done := make(chan struct{})
+	timer := time.NewTimer(10*time.Second)
+	defer timer.Stop()
+
+	start := time.Now()
+	go func() {
+		process()
+		close(done)
+	}()
+
+	for {
+		select {
+		case <-done:
+			u.TimeUsed += int64(math.Round(time.Since(start).Seconds()))
+			if u.TimeUsed > 10 {
+				return false
+			}
+			return true
+		case <-timer.C:
+			return false
+		}
+	}
 }
 
 func main() {
