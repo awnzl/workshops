@@ -30,6 +30,7 @@ func main() {
 	logger := log.New(os.Stdout, "Log: ", log.Lshortfile)
 
 	router := mux.NewRouter()
+	// authenticator := authapp.New()
 	application := app.New(logger)
 
 	handlers := api.New(application, logger)
