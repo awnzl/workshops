@@ -7,22 +7,25 @@ import (
 
 	"github.com/google/uuid"
 
+	"calendar/internal/auth"
 	"calendar/internal/models"
 )
 
 type App struct {
-	log *log.Logger
+	log  *log.Logger
+	auth *auth.App
 }
 
-func New(l *log.Logger) *App {
+func New(l *log.Logger, a *auth.App) *App {
 	return &App{
-		log: l,
+		log:  l,
+		auth: a,
 	}
 }
 
-// todo: remove
-var tmpUser, tmpPsw string
-var tmpLoggedInUser models.User
+// todo: replace by db
+var users = make(map[string]models.User)
+
 var tmpEvents []models.Event = []models.Event{
 	{
 		ID: uuid.New().String(),
@@ -53,45 +56,47 @@ var tmpEvents []models.Event = []models.Event{
 	},
 }
 
-// todo: how correctly to check authorization?
-func (a *App) IsAuthorized_DebugPurposeSolution(login string) bool {
-	return tmpLoggedInUser.Login == login
+func (a *App) AuthApp() *auth.App {
+	return a.auth
 }
 
-func (a *App) Login(usr, psw string) error {
-	a.log.Println("app.Login()", usr, psw)
+func (a *App) Login(usr, psw string) (token string, err error) {
+	token, err = a.auth.GenerateJWT(usr)
+	if err != nil {
+		a.log.Println(err)
+		return
+	}
 
-	tmpUser = usr
-	tmpPsw = psw
-
-	tmpLoggedInUser = models.User{
+	users[usr] = models.User{
 		Login:    usr,
 		Timezone: time.Now().Local().String(),
 	}
 
-	return nil
+	return
 }
 
-func (a *App) Logout() error {
-	a.log.Println("Logout is called")
+func (a *App) Logout(usr string) error {
+	delete(users, usr)
 	return nil
 }
 
 func (a *App) User(user models.User) error {
-	tmpLoggedInUser.Timezone = user.Timezone
+	// tmpLoggedInUser.Timezone = user.Timezone
 	//todo: update timezone in events? or just use user timezone?
 
 	return nil
 }
 
-func (a *App) Event(id string) (models.Event, error) {
+func (a *App) Event(id string) (event models.Event, err error) {
 	for i := range tmpEvents {
 		if id == tmpEvents[i].ID {
 			return tmpEvents[i], nil
 		}
 	}
 
-	return models.Event{}, fmt.Errorf("an event not found, id: %v", id)
+	err = fmt.Errorf("an event not found, id: %v", id)
+
+	return
 }
 
 func (a *App) Events() ([]models.Event, error) {

@@ -1,13 +1,13 @@
 package models
 
 type Auth struct {
-	Username string
-	Password string
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type User struct {
-	Login    string
-	Timezone string
+	Login    string `json:"login"`
+	Timezone string `json:"timezone"`
 }
 
 type Event struct {

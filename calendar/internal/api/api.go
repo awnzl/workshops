@@ -7,15 +7,21 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/justinas/alice"
 
 	"calendar/internal/app"
+	"calendar/internal/helpers"
+	"calendar/internal/middleware"
 	"calendar/internal/models"
 )
-
 
 type API struct {
 	app *app.App
 	log *log.Logger
+}
+
+type loginResponse struct {
+	Token string `json:"token"`
 }
 
 func New(a *app.App, l *log.Logger) *API {
@@ -27,14 +33,20 @@ func New(a *app.App, l *log.Logger) *API {
 
 const eventID = "id"
 
-func (a *API) RegisterHandlers(router *mux.Router, mwFuncs ...mux.MiddlewareFunc) {
-	router.HandleFunc("/login", a.login).Methods("POST")
-	router.HandleFunc("/logout", a.logout)
-	router.HandleFunc("/api/user", a.user).Methods("PUT")
-	router.HandleFunc("/api/events", a.events).Methods("GET", "POST")
-	router.HandleFunc(fmt.Sprintf("/api/event/{%v}", eventID), a.event).Methods("GET", "PUT")
+func (a *API) RegisterHandlers(router *mux.Router) {
+	chain := alice.New(middleware.Authorization(a.log, a.app.AuthApp()))
 
-	router.Use(mwFuncs...)
+	handler := func(endpoint http.HandlerFunc) http.Handler {
+		return chain.Then(http.HandlerFunc(endpoint))
+	}
+
+	router.HandleFunc("/login", a.login).Methods("POST")
+	router.Handle("/logout", handler(a.logout))
+	router.Handle("/api/user", handler(a.user)).Methods("PUT")
+	router.Handle("/api/events", handler(a.events)).Methods("GET", "POST")
+	router.Handle(fmt.Sprintf("/api/event/{%v}", eventID), handler(a.event)).Methods("GET", "PUT")
+
+	router.Use(middleware.Logger(a.log))
 }
 
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
@@ -42,14 +54,22 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 
 	err := json.NewDecoder(r.Body).Decode(&auth)
 	if err != nil {
-		a.writeError(err, http.StatusBadRequest, w)
+		a.writeError(w, err, http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
 
-	err = a.app.Login(auth.Username, auth.Password)
+	token, err := a.app.Login(auth.Username, auth.Password)
 	if err != nil {
-		a.writeError(err, http.StatusUnauthorized, w)
+		a.writeError(w, err, http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	err = json.NewEncoder(w).Encode(loginResponse{ Token: token })
+	if err != nil {
+		a.writeError(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -57,7 +77,15 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) logout(w http.ResponseWriter, r *http.Request) {
-	a.app.Logout()
+	username := r.Context().Value(helpers.CtxValKey("username"))
+
+	usr, ok := username.(string)
+	if !ok {
+		a.writeError(w, fmt.Errorf("incorrect context value"), http.StatusInternalServerError)
+		return
+	}
+
+	a.app.Logout(usr)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -69,20 +97,14 @@ func (a *API) user(w http.ResponseWriter, r *http.Request) {
 
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
-		a.writeError(err, http.StatusBadRequest, w)
+		a.writeError(w, err, http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
 
-	//TODO: find the correct way to check authorization header before loading Body
-	if a.app.IsAuthorized_DebugPurposeSolution(user.Login) {
-		a.writeError(err, http.StatusUnauthorized, w)
-		return
-	}
-
 	err = a.app.User(user)
 	if err != nil {
-		a.writeError(err, http.StatusInternalServerError, w)
+		a.writeError(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -118,7 +140,7 @@ func (a *API) event(w http.ResponseWriter, r *http.Request) {
 func (a *API) writeAllEvents(w http.ResponseWriter) {
 	events, err := a.app.Events()
 	if err != nil {
-		a.writeError(err, http.StatusInternalServerError, w)
+		a.writeError(w, err, http.StatusInternalServerError)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -134,14 +156,14 @@ func (a *API) addEvents(w http.ResponseWriter, r *http.Request) {
 
 	err := json.NewDecoder(r.Body).Decode(&events)
 	if err != nil {
-		a.writeError(err, http.StatusBadRequest, w)
+		a.writeError(w, err, http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
 
 	err = a.app.AddEvents(events)
 	if err != nil {
-		a.writeError(err, http.StatusInternalServerError, w)
+		a.writeError(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -151,7 +173,7 @@ func (a *API) addEvents(w http.ResponseWriter, r *http.Request) {
 func (a *API) getEvent(w http.ResponseWriter, id string) {
 	event, err := a.app.Event(id)
 	if err != nil {
-		a.writeError(err, http.StatusInternalServerError, w)
+		a.writeError(w, err, http.StatusInternalServerError)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -167,14 +189,14 @@ func (a *API) updateEvent(w http.ResponseWriter, r *http.Request) {
 
 	err := json.NewDecoder(r.Body).Decode(&event)
 	if err != nil {
-		a.writeError(err, http.StatusBadRequest, w)
+		a.writeError(w, err, http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
 
 	err = a.app.UpdateEvent(event)
 	if err != nil {
-		a.writeError(err, http.StatusInternalServerError, w)
+		a.writeError(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -184,7 +206,7 @@ func (a *API) updateEvent(w http.ResponseWriter, r *http.Request) {
 
 /* Helpers */
 
-func (a *API) writeError(err error, status int, w http.ResponseWriter) {
+func (a *API) writeError(w http.ResponseWriter, err error, status int) {
 	a.log.Println(err)
 	http.Error(w, err.Error(), status)
 }

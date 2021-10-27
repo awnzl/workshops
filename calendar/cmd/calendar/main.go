@@ -10,7 +10,7 @@ import (
 
 	"calendar/internal/api"
 	"calendar/internal/app"
-	"calendar/internal/middleware"
+	"calendar/internal/auth"
 )
 
 /*
@@ -23,20 +23,24 @@ import (
 */
 
 const (
-	port = 8000
+	port            = 8000
+	secretKey       = "Pr3ttyS3cr3tK3y"
+	tokenExpiration = 24
 )
+
+type ContextKey string
 
 func main() {
 	logger := log.New(os.Stdout, "Log: ", log.Lshortfile)
 
 	router := mux.NewRouter()
-	// authenticator := authapp.New()
-	application := app.New(logger)
+	authApp := auth.New(secretKey, tokenExpiration)
+	application := app.New(logger, authApp)
 
 	handlers := api.New(application, logger)
 	handlers.RegisterHandlers(
 		router,
-		middleware.Logger(logger),
+		// middleware.Logger(logger),
 	)
 
 	s := &http.Server{

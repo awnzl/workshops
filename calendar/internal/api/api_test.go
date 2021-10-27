@@ -2,6 +2,8 @@ package api
 
 import (
 	"calendar/internal/app"
+	"calendar/internal/auth"
+	"encoding/json"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -18,7 +20,7 @@ var ts = struct {
 	api *API
 }{
 	api: New(
-		app.New(logger),
+		app.New(logger, auth.New("UserName", 1)),
 		logger,
 	),
 }
@@ -38,6 +40,12 @@ func TestLogin(t *testing.T) {
 	ts.api.login(w, req)
 
 	resp := w.Result()
+
+	var token loginResponse
+	err := json.NewDecoder(resp.Body).Decode(&token)
+	is.NoErr(err)
+	defer resp.Body.Close()
+
 	is.Equal(http.StatusOK, resp.StatusCode)
 }
 
