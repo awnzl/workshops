@@ -76,6 +76,7 @@ func (a *App) Login(usr, psw string) (token string, err error) {
 }
 
 func (a *App) Logout(usr string) error {
+//todo: logout session instead deleting it
 	delete(users, usr)
 	return nil
 }

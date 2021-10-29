@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -28,11 +31,7 @@ const (
 	tokenExpiration = 24
 )
 
-type ContextKey string
-
-func main() {
-	logger := log.New(os.Stdout, "Log: ", log.Lshortfile)
-
+func serve(ctx context.Context, logger *log.Logger) error {
 	router := mux.NewRouter()
 	authApp := auth.New(secretKey, tokenExpiration)
 	application := app.New(logger, authApp)
@@ -48,9 +47,50 @@ func main() {
 		Handler: router,
 	}
 
+	go func() {
+		err := s.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			logger.Fatal("server error", err)
+		}
+	}()
+
 	logger.Println("start listening port", port)
 
-	if err := s.ListenAndServe(); err != nil {
-		logger.Panic("server error", err)
+	<-ctx.Done()
+
+	logger.Println("server stopped")
+
+	ctxShutDown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err := s.Shutdown(ctxShutDown)
+	if err != nil {
+		logger.Fatal("server ShutDown failed:", err)
+	}
+
+	logger.Printf("server exited properly")
+
+	if err == http.ErrServerClosed {
+		return nil
+	}
+
+	return err
+}
+
+func main() {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt)
+
+	logger := log.New(os.Stdout, "Log: ", log.Lshortfile)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		logger.Println("system call", <-ch)
+		cancel()
+	}()
+
+	if err := serve(ctx, logger); err != nil {
+		logger.Println("failed to serve:", err)
 	}
 }
