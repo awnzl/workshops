@@ -16,25 +16,27 @@ import (
 )
 
 type API struct {
-	app *app.App
-	log *log.Logger
+	app  *app.App
+	auth app.Authentication
+	log  *log.Logger
 }
 
 type loginResponse struct {
 	Token string `json:"token"`
 }
 
-func New(a *app.App, l *log.Logger) *API {
+func New(a *app.App, au app.Authentication, l *log.Logger) *API {
 	return &API{
-		app: a,
-		log: l,
+		app:  a,
+		auth: au,
+		log:  l,
 	}
 }
 
 const eventID = "id"
 
 func (a *API) RegisterHandlers(router *mux.Router) {
-	chain := alice.New(middleware.Authorization(a.log, a.app.AuthApp()))
+	chain := alice.New(middleware.Authorization(a.log, a.auth))
 
 	handler := func(endpoint http.HandlerFunc) http.Handler {
 		return chain.Then(http.HandlerFunc(endpoint))

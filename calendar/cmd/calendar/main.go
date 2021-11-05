@@ -14,6 +14,7 @@ import (
 	"calendar/internal/api"
 	"calendar/internal/app"
 	"calendar/internal/auth"
+	"calendar/internal/storage"
 )
 
 /*
@@ -25,21 +26,28 @@ import (
 - Use is and moq in tests;
 */
 
+// debug purpose
 const (
 	port            = 8000
 	secretKey       = "Pr3ttyS3cr3tK3y"
 	tokenExpiration = 24
+	DbURL           = "postgres://gouser:gopassword@localhost:5432/gotest?sslmode=disable"
 )
 
 func serve(ctx context.Context, logger *log.Logger) error {
-	router := mux.NewRouter()
-	authApp := auth.New(secretKey, tokenExpiration)
-	application := app.New(logger, authApp)
+	db := storage.NewPostgresQL(logger)
+	if err := db.Connect(dbURL); err != nil {
+		logger.Fatal("database connecting fail:", err)
+	}
+	defer db.Close()
 
-	handlers := api.New(application, logger)
+	authApp := auth.New(secretKey, tokenExpiration)
+	application := app.New(logger, authApp, db)
+
+	router := mux.NewRouter()
+	handlers := api.New(application, authApp, logger)
 	handlers.RegisterHandlers(
 		router,
-		// middleware.Logger(logger),
 	)
 
 	s := &http.Server{

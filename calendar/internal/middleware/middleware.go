@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"calendar/internal/app"
 	"calendar/internal/auth"
 	"calendar/internal/helpers"
 )
@@ -20,7 +21,7 @@ func Logger(l *log.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-func Authorization(l *log.Logger, authApp *auth.App) func(http.Handler) http.Handler {
+func Authorization(l *log.Logger, authApp app.Authentication) func(http.Handler) http.Handler {
 	return func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -43,7 +44,13 @@ func Authorization(l *log.Logger, authApp *auth.App) func(http.Handler) http.Han
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), helpers.CtxValKey("username"), claims.Username)
+			c, ok := claims.(*auth.JWTClaim)
+			if !ok {
+				http.Error(w, "can't extract authentication claims", http.StatusInternalServerError)
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), helpers.CtxValKey("username"), c.Username)
 			r = r.WithContext(ctx)
 
 			handler.ServeHTTP(w, r)

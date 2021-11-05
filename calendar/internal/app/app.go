@@ -7,16 +7,27 @@ import (
 
 	"github.com/google/uuid"
 
-	"calendar/internal/auth"
 	"calendar/internal/models"
 )
 
-type App struct {
-	log  *log.Logger
-	auth *auth.App
+// todo: split on two interfaces: generation here and validation + claims in middleware
+type Authentication interface {
+	GenerateJWT(username string) (signedToken string, err error)
+	ValidateJWT(signedToken string) (claims interface{}, err error)
 }
 
-func New(l *log.Logger, a *auth.App) *App {
+type Storage interface {
+	Connect(dbURL string) error
+	Close()
+}
+
+type App struct {
+	log  *log.Logger
+	auth Authentication
+	db   Storage
+}
+
+func New(l *log.Logger, a Authentication, db Storage) *App {
 	return &App{
 		log:  l,
 		auth: a,
@@ -54,10 +65,6 @@ var tmpEvents []models.Event = []models.Event{
 		Duration: 7,
 		Notes: []string{ "event3 note1", "event3 note2" },
 	},
-}
-
-func (a *App) AuthApp() *auth.App {
-	return a.auth
 }
 
 func (a *App) Login(usr, psw string) (token string, err error) {

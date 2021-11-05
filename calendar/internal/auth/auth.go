@@ -14,8 +14,8 @@ type App struct {
 }
 
 type JWTClaim struct {
-	Username string
 	jwt.StandardClaims
+	Username string
 }
 
 func New(k string, h int64) *App {
@@ -41,7 +41,7 @@ func (a *App) GenerateJWT(username string) (signedToken string, err error) {
 	return
 }
 
-func (a *App) ValidateJWT(signedToken string) (claims *JWTClaim, err error) {
+func (a *App) ValidateJWT(signedToken string) (claims interface{}, err error) {
 	token, err := jwt.ParseWithClaims(
 		signedToken,
 		&JWTClaim{},
@@ -54,16 +54,16 @@ func (a *App) ValidateJWT(signedToken string) (claims *JWTClaim, err error) {
 		return
 	}
 
-	claims, ok := token.Claims.(*JWTClaim)
+	c, ok := token.Claims.(*JWTClaim)
 	if !ok {
 		err = errors.New("Couldn't parse claims")
 		return
 	}
 
-	if claims.ExpiresAt < time.Now().Local().Unix() {
+	if c.ExpiresAt < time.Now().Local().Unix() {
 		err = errors.New("JWT is expired")
 		return
 	}
 
-	return
+	return c, nil
 }
