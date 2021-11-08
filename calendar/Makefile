@@ -9,8 +9,10 @@ APPS	:= $(notdir $(wildcard $(CMD)/*))
 TESTS	:= $(GOBASE)/internal/...
 # DEVENV  := $(GOBASE)/.env
 
+FLAGS	:= -gcflags="all=-N -l"
+
 define BUILD
-$(GOBUILD) -o $(GOBIN)/$(1) $(CMD)/$(1)/*.go
+$(GOBUILD) $(2) -o $(GOBIN)/$(1) $(CMD)/$(1)/*.go
 
 endef
 
@@ -21,6 +23,10 @@ all: build
 build:
 	$(foreach app,$(APPS),$(call BUILD,$(app)))
 	# cp -n -f $(DEVENV) $(GOBIN)
+
+.PHONY: delve
+delve:
+	$(foreach app,$(APPS),$(call BUILD,$(app), $(FLAGS)))
 
 .PHONY: test
 test:

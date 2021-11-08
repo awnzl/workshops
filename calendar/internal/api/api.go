@@ -16,27 +16,27 @@ import (
 )
 
 type API struct {
-	app  *app.App
-	auth app.Authentication
-	log  *log.Logger
+	app *app.App
+	val middleware.JWTValidator
+	log *log.Logger
 }
 
 type loginResponse struct {
 	Token string `json:"token"`
 }
 
-func New(a *app.App, au app.Authentication, l *log.Logger) *API {
+func New(a *app.App, v middleware.JWTValidator, l *log.Logger) *API {
 	return &API{
-		app:  a,
-		auth: au,
-		log:  l,
+		app: a,
+		val: v,
+		log: l,
 	}
 }
 
 const eventID = "id"
 
 func (a *API) RegisterHandlers(router *mux.Router) {
-	chain := alice.New(middleware.Authorization(a.log, a.auth))
+	chain := alice.New(middleware.Authorization(a.log, a.val))
 
 	handler := func(endpoint http.HandlerFunc) http.Handler {
 		return chain.Then(http.HandlerFunc(endpoint))
@@ -79,24 +79,19 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) logout(w http.ResponseWriter, r *http.Request) {
-	username := r.Context().Value(helpers.CtxValKey("username"))
-
-	usr, ok := username.(string)
+	username, ok := a.username(w, r)
 	if !ok {
-		a.writeError(w, fmt.Errorf("incorrect context value"), http.StatusInternalServerError)
 		return
 	}
 
-	a.app.Logout(usr)
+	a.app.Logout(username)
 
 	w.WriteHeader(http.StatusOK)
 }
 
 // update user's timezone
-// can be done only for logged in users
 func (a *API) user(w http.ResponseWriter, r *http.Request) {
 	var user models.User
-
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
 		a.writeError(w, err, http.StatusBadRequest)
@@ -115,32 +110,42 @@ func (a *API) user(w http.ResponseWriter, r *http.Request) {
 
 // get all events or create events
 func (a *API) events(w http.ResponseWriter, r *http.Request) {
+	username, ok := a.username(w, r)
+	if !ok {
+		return
+	}
+
 	switch r.Method {
 	case http.MethodGet:
-		a.writeAllEvents(w)
+		a.writeAllEvents(username, w)
 	case http.MethodPost:
-		a.addEvents(w, r)
+		a.addEvents(username, w, r)
 	}
 }
 
 func (a *API) event(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
+	username, ok := a.username(w, r)
+	if !ok {
+		return
+	}
 
+	vars := mux.Vars(r)
     id, ok := vars[eventID]
     if !ok {
-        a.log.Println(eventID, "is missing in parameters")
+		a.writeError(w, fmt.Errorf("%v is missing in request parameters", eventID), http.StatusBadRequest)
+		return
     }
 
 	switch r.Method {
 	case http.MethodGet:
-		a.getEvent(w, id)
+		a.writeEvent(w, username, id)
 	case http.MethodPut:
-		a.updateEvent(w, r)
+		a.updateEvent(w, r, username, id)
 	}
 }
 
-func (a *API) writeAllEvents(w http.ResponseWriter) {
-	events, err := a.app.Events()
+func (a *API) writeAllEvents(username string, w http.ResponseWriter) {
+	events, err := a.app.Events(username)
 	if err != nil {
 		a.writeError(w, err, http.StatusInternalServerError)
 	}
@@ -153,7 +158,7 @@ func (a *API) writeAllEvents(w http.ResponseWriter) {
 	}
 }
 
-func (a *API) addEvents(w http.ResponseWriter, r *http.Request) {
+func (a *API) addEvents(username string, w http.ResponseWriter, r *http.Request) {
 	var events []models.Event
 
 	err := json.NewDecoder(r.Body).Decode(&events)
@@ -163,7 +168,7 @@ func (a *API) addEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	err = a.app.AddEvents(events)
+	err = a.app.AddEvents(username, events)
 	if err != nil {
 		a.writeError(w, err, http.StatusInternalServerError)
 		return
@@ -172,8 +177,8 @@ func (a *API) addEvents(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (a *API) getEvent(w http.ResponseWriter, id string) {
-	event, err := a.app.Event(id)
+func (a *API) writeEvent(w http.ResponseWriter, username, id string) {
+	event, err := a.app.Event(username, id)
 	if err != nil {
 		a.writeError(w, err, http.StatusInternalServerError)
 	}
@@ -186,7 +191,7 @@ func (a *API) getEvent(w http.ResponseWriter, id string) {
 	}
 }
 
-func (a *API) updateEvent(w http.ResponseWriter, r *http.Request) {
+func (a *API) updateEvent(w http.ResponseWriter, r *http.Request, usr, eventID string) {
 	var event models.Event
 
 	err := json.NewDecoder(r.Body).Decode(&event)
@@ -196,7 +201,7 @@ func (a *API) updateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	err = a.app.UpdateEvent(event)
+	err = a.app.UpdateEvent(usr, eventID, event)
 	if err != nil {
 		a.writeError(w, err, http.StatusInternalServerError)
 		return
@@ -211,4 +216,15 @@ func (a *API) updateEvent(w http.ResponseWriter, r *http.Request) {
 func (a *API) writeError(w http.ResponseWriter, err error, status int) {
 	a.log.Println(err)
 	http.Error(w, err.Error(), status)
+}
+
+func (a *API) username(w http.ResponseWriter, r *http.Request) (username string, ok bool) {
+	val := r.Context().Value(helpers.CtxValKey("username"))
+
+	username, ok = val.(string)
+	if !ok {
+		a.writeError(w, fmt.Errorf("incorrect context value"), http.StatusInternalServerError)
+	}
+
+	return
 }

@@ -7,10 +7,13 @@ import (
 	"net/http"
 	"strings"
 
-	"calendar/internal/app"
 	"calendar/internal/auth"
 	"calendar/internal/helpers"
 )
+
+type JWTValidator interface {
+	ValidateJWT(signedToken string) (claims interface{}, err error)
+}
 
 func Logger(l *log.Logger) func(http.Handler) http.Handler {
 	return func(handler http.Handler) http.Handler {
@@ -21,7 +24,7 @@ func Logger(l *log.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-func Authorization(l *log.Logger, authApp app.Authentication) func(http.Handler) http.Handler {
+func Authorization(l *log.Logger, validator JWTValidator) func(http.Handler) http.Handler {
 	return func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -38,7 +41,7 @@ func Authorization(l *log.Logger, authApp app.Authentication) func(http.Handler)
 
 			clientToken := strings.TrimSpace(extracted[1])
 
-			claims, err := authApp.ValidateJWT(clientToken)
+			claims, err := validator.ValidateJWT(clientToken)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return

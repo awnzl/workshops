@@ -11,11 +11,11 @@ type User struct {
 }
 
 type Event struct {
-	ID          string
-	Title       string
-	Description string
-	Time        string
-	Timezone    string
-	Duration    int32
-	Notes       []string
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Time        string   `json:"time"`
+	Timezone    string   `json:"timezone"` // depends on user's timezone
+	Duration    int32    `json:"duration"`
+	Notes       []string `json:"notes"`
 }

@@ -8,11 +8,12 @@ import (
 )
 
 const (
-	secretKey = "3xtr3m3lyS3cr3tK3y"
+	secretKey  = "3xtr3m3lyS3cr3tK3y"
+	expiration = 1
 )
 
 func TestGenerateToken(t *testing.T) {
-	authApp := New(secretKey, 1)
+	authApp := New(secretKey, expiration)
 
 	is := is.New(t)
 	generatedToken, err := authApp.GenerateJWT("UserName")
@@ -23,7 +24,7 @@ func TestGenerateToken(t *testing.T) {
 
 func TestValidateToken(t *testing.T) {
 	encodedToken := os.Getenv("testToken")
-	authApp := New(secretKey, 1)
+	authApp := New(secretKey, expiration)
 
 	is := is.New(t)
 	claims, err := authApp.ValidateJWT(encodedToken)

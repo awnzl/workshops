@@ -31,20 +31,20 @@ const (
 	port            = 8000
 	secretKey       = "Pr3ttyS3cr3tK3y"
 	tokenExpiration = 24
-	DbURL           = "postgres://gouser:gopassword@localhost:5432/gotest?sslmode=disable"
+	dbURL           = "postgres://gouser:gopassword@localhost:5432/gotest?sslmode=disable"
 )
 
 func serve(ctx context.Context, logger *log.Logger) error {
-	db := storage.NewPostgresQL(logger)
+	authApp := auth.New(secretKey, tokenExpiration)
+	db := storage.NewPostgresQL(logger, authApp)
 	if err := db.Connect(dbURL); err != nil {
 		logger.Fatal("database connecting fail:", err)
 	}
 	defer db.Close()
 
-	authApp := auth.New(secretKey, tokenExpiration)
-	application := app.New(logger, authApp, db)
-
+	application := app.New(logger, db)
 	router := mux.NewRouter()
+
 	handlers := api.New(application, authApp, logger)
 	handlers.RegisterHandlers(
 		router,

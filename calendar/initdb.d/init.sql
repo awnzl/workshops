@@ -1,16 +1,14 @@
 CREATE TABLE users(
-    id       VARCHAR(32) NOT NULL PRIMARY KEY,
-    login    VARCHAR(64) NOT NULL,
+    login    VARCHAR(64) NOT NULL PRIMARY KEY,
     timezone TEXT NOT NULL
 );
 
 CREATE TABLE events(
-    id          VARCHAR(32) NOT NULL PRIMARY KEY,
-    user_id     VARCHAR(32) REFERENCES users (id),
+    id          VARCHAR(36) NOT NULL PRIMARY KEY,
+    user_id     VARCHAR(64) REFERENCES users (login),
     title       TEXT NOT NULL,
     description TEXT,
-    time        TIMESTAMP NOT NULL,
-    timezone    TEXT NOT NULL,
+    datetime    TIMESTAMP,
     duration    INT,
     notes       TEXT[]
 );
