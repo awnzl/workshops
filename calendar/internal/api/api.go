@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/justinas/alice"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"calendar/internal/app"
 	"calendar/internal/helpers"
@@ -49,6 +50,8 @@ func (a *API) RegisterHandlers(router *mux.Router) {
 	router.Handle(fmt.Sprintf("/api/event/{%v}", eventID), handler(a.event)).Methods("GET", "PUT")
 
 	router.Use(middleware.Logger(a.log))
+
+	router.Handle("/metrics", promhttp.Handler())
 }
 
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
