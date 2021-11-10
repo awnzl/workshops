@@ -56,14 +56,16 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 
 	err := json.NewDecoder(r.Body).Decode(&auth)
 	if err != nil {
-		a.writeError(w, err, http.StatusBadRequest)
+		a.log.Println(err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
 
 	token, err := a.app.Login(auth.Username, auth.Password)
 	if err != nil {
-		a.writeError(w, err, http.StatusUnauthorized)
+		a.log.Println(err)
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -71,7 +73,8 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 
 	err = json.NewEncoder(w).Encode(loginResponse{ Token: token })
 	if err != nil {
-		a.writeError(w, err, http.StatusInternalServerError)
+		a.log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -94,14 +97,16 @@ func (a *API) user(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
-		a.writeError(w, err, http.StatusBadRequest)
+		a.log.Println(err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
 
 	err = a.app.User(user)
 	if err != nil {
-		a.writeError(w, err, http.StatusInternalServerError)
+		a.log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -132,7 +137,9 @@ func (a *API) event(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
     id, ok := vars[eventID]
     if !ok {
-		a.writeError(w, fmt.Errorf("%v is missing in request parameters", eventID), http.StatusBadRequest)
+		err := fmt.Errorf("%v is missing in request parameters", eventID)
+		a.log.Println(err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
     }
 
@@ -147,7 +154,8 @@ func (a *API) event(w http.ResponseWriter, r *http.Request) {
 func (a *API) writeAllEvents(username string, w http.ResponseWriter) {
 	events, err := a.app.Events(username)
 	if err != nil {
-		a.writeError(w, err, http.StatusInternalServerError)
+		a.log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -163,14 +171,16 @@ func (a *API) addEvents(username string, w http.ResponseWriter, r *http.Request)
 
 	err := json.NewDecoder(r.Body).Decode(&events)
 	if err != nil {
-		a.writeError(w, err, http.StatusBadRequest)
+		a.log.Println(err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
 
 	err = a.app.AddEvents(username, events)
 	if err != nil {
-		a.writeError(w, err, http.StatusInternalServerError)
+		a.log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -180,7 +190,8 @@ func (a *API) addEvents(username string, w http.ResponseWriter, r *http.Request)
 func (a *API) writeEvent(w http.ResponseWriter, username, id string) {
 	event, err := a.app.Event(username, id)
 	if err != nil {
-		a.writeError(w, err, http.StatusInternalServerError)
+		a.log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -196,34 +207,31 @@ func (a *API) updateEvent(w http.ResponseWriter, r *http.Request, usr, eventID s
 
 	err := json.NewDecoder(r.Body).Decode(&event)
 	if err != nil {
-		a.writeError(w, err, http.StatusBadRequest)
+		a.log.Println(err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
 
 	err = a.app.UpdateEvent(usr, eventID, event)
 	if err != nil {
-		a.writeError(w, err, http.StatusInternalServerError)
+		a.log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 }
 
-
 /* Helpers */
-
-func (a *API) writeError(w http.ResponseWriter, err error, status int) {
-	a.log.Println(err)
-	http.Error(w, err.Error(), status)
-}
-
 func (a *API) username(w http.ResponseWriter, r *http.Request) (username string, ok bool) {
 	val := r.Context().Value(helpers.CtxValKey("username"))
 
 	username, ok = val.(string)
 	if !ok {
-		a.writeError(w, fmt.Errorf("incorrect context value"), http.StatusInternalServerError)
+		err := fmt.Errorf("incorrect context value")
+		a.log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
 	return
