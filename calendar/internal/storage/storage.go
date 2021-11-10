@@ -10,28 +10,23 @@ import (
 	"calendar/internal/models"
 )
 
-type JWTGenerator interface {
-	GenerateJWT(username string) (signedToken string, err error)
-}
-
-const timePattern = "2006-01-02 15:04:05.000000000"
+const timePattern = "2006-01-02 15:04:05.000000000 -0700"
 
 type PostgresDB struct {
 	db   *sql.DB
 	log  *log.Logger
-	auth JWTGenerator
 }
 
-func NewPostgresQL(l *log.Logger, auth JWTGenerator) *PostgresDB {
+func NewPostgresQL(l *log.Logger) *PostgresDB {
 	return &PostgresDB{
 		log:  l,
-		auth: auth,
 	}
 }
 
 func (s *PostgresDB) Connect(dbURL string) (err error) {
 	s.db, err = sql.Open("postgres", dbURL)
 	if err != nil {
+		s.log.Println(err)
 		return
 	}
 
@@ -42,15 +37,8 @@ func (s *PostgresDB) Close() {
 	s.db.Close()
 }
 
-// just generate new token on each login
-func (s *PostgresDB) UserToken(usr, psw string) (token string, err error) {
-	err = s.addUser(usr, psw)
-	if err != nil {
-		s.log.Println(err)
-		return
-	}
-
-	return s.generateToken(usr, psw)
+func (s *PostgresDB) LoginUser(usr, psw string) error {
+	return s.addUser(usr, psw)
 }
 
 func (s *PostgresDB) User(user models.User) (err error) {
@@ -72,15 +60,14 @@ func (s *PostgresDB) User(user models.User) (err error) {
 func (s *PostgresDB) Event(userID, eventID string) (event models.Event, err error) {
 	user, err := s.user(userID)
 	if err != nil {
+		s.log.Println(err)
 		return
 	}
 
-	//todo: postgres returns incorrect time pattern: 2021-10-22T03:36:56.363372Z -- result contains T and Z. TODO: clarify
 	eventRow := s.db.QueryRow("SELECT * FROM events WHERE id=$1 AND user_id=$2", eventID, user.Login)
-	var usrID string
 	err = eventRow.Scan(
 		&event.ID,
-		&usrID,
+		&userID,
 		&event.Title,
 		&event.Description,
 		&event.Time,
@@ -88,11 +75,21 @@ func (s *PostgresDB) Event(userID, eventID string) (event models.Event, err erro
 		pq.Array(&event.Notes),
 	)
 
-	event.Timezone = user.Timezone
+	t, err := time.Parse(time.RFC3339Nano, event.Time)
+	if err != nil {
+		s.log.Println(err, "arg:", event.Time)
+		return
+	}
 
+	loc, err := time.LoadLocation(user.Timezone)
 	if err != nil {
 		s.log.Println(err)
+		return
 	}
+	t = t.In(loc)
+
+	event.Time = t.String()
+	event.Timezone = user.Timezone
 
 	return
 }
@@ -102,13 +99,15 @@ func (s *PostgresDB) UpdateEvent(login, eventID string, event models.Event) (err
 	SET title=$3, description=$4, datetime=$5, duration=$6, notes=$7
 	WHERE id=$1 AND user_id=$2`
 
+	t, err := s.userTime(login, event.Time)
+
 	_, err = s.db.Exec(
 		sqlStatement,
 		eventID,
 		login,
 		event.Title,
 		event.Description,
-		event.Time,
+		t,
 		event.Duration,
 		pq.Array(event.Notes),
 	)
@@ -126,11 +125,7 @@ func (s *PostgresDB) AddEvents(login string, events []models.Event) error {
 	`
 
 	for i := range events {
-		t, err := time.Parse(timePattern, events[i].Time)
-		if err != nil {
-			s.log.Println(err)
-			return err
-		}
+		t, err := s.userTime(login, events[i].Time)
 
 		_, err = s.db.Exec(
 			sqlStatement,
@@ -155,11 +150,13 @@ func (s *PostgresDB) AddEvents(login string, events []models.Event) error {
 func (s *PostgresDB) Events(usr string) (events []models.Event, err error) {
 	user, err := s.user(usr)
 	if err != nil {
+		s.log.Println(err)
 		return
 	}
 
 	eventRows, err := s.db.Query("SELECT id FROM events WHERE user_id=$1", user.Login)
 	if err != nil {
+		s.log.Println(err)
 		return
 	}
 
@@ -203,18 +200,6 @@ func (s *PostgresDB) addUser(usr, psw string) error {
 	return err
 }
 
-func (s *PostgresDB) generateToken(usr, psw string) (token string, err error) {
-	_ = psw
-
-	token, err = s.auth.GenerateJWT(usr)
-	if err != nil {
-		s.log.Println(err)
-		return
-	}
-
-	return
-}
-
 func (s *PostgresDB) user(login string) (user models.User, err error) {
 	row := s.db.QueryRow("SELECT login, timezone FROM users WHERE login=$1", login)
 	err = row.Scan(&user.Login, &user.Timezone)
@@ -222,6 +207,30 @@ func (s *PostgresDB) user(login string) (user models.User, err error) {
 	if err != nil {
 		s.log.Println(err)
 	}
+
+	return
+}
+
+func (s *PostgresDB) userTime(login, tStr string) (tz time.Time, err error) {
+	t, err := time.Parse(timePattern, tStr)
+	if err != nil {
+		s.log.Println(err)
+		return
+	}
+
+	user, err := s.user(login)
+	if err != nil {
+		s.log.Println(err)
+		return
+	}
+
+	loc, err := time.LoadLocation(user.Timezone)
+	if err != nil {
+		s.log.Println(err)
+		return
+	}
+
+	tz = t.In(loc)
 
 	return
 }

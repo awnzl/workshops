@@ -6,10 +6,14 @@ import (
 	"calendar/internal/models"
 )
 
+type JWTGenerator interface {
+	GenerateJWT(username string) (signedToken string, err error)
+}
+
 type Storage interface {
 	Connect(dbURL string) error
 	Close()
-	UserToken(usr, psw string) (string, error)
+	LoginUser(usr, psw string) error
 	User(user models.User) error
 	Event(userID, eventID string) (models.Event, error)
 	UpdateEvent(userID, eventID string, event models.Event) error
@@ -18,19 +22,27 @@ type Storage interface {
 }
 
 type App struct {
-	log *log.Logger
-	db  Storage
+	log  *log.Logger
+	db   Storage
+	auth JWTGenerator
 }
 
-func New(l *log.Logger, db Storage) *App {
+func New(l *log.Logger, db Storage, a JWTGenerator) *App {
 	return &App{
-		log: l,
-		db:  db,
+		log:  l,
+		db:   db,
+		auth: a,
 	}
 }
 
 func (a *App) Login(usr, psw string) (token string, err error) {
-	return a.db.UserToken(usr, psw)
+	err = a.db.LoginUser(usr, psw)
+	if err != nil {
+		a.log.Println(err)
+		return
+	}
+
+	return a.generateToken(usr, psw)
 }
 
 func (a *App) Logout(userID string) error {
@@ -55,4 +67,16 @@ func (a *App) AddEvents(userID string, events []models.Event) error {
 
 func (a *App) UpdateEvent(userID, eventID string, event models.Event) error {
 	return a.db.UpdateEvent(userID, eventID, event)
+}
+
+func (a *App) generateToken(usr, psw string) (token string, err error) {
+	_ = psw
+
+	token, err = a.auth.GenerateJWT(usr)
+	if err != nil {
+		a.log.Println(err)
+		return
+	}
+
+	return
 }

@@ -36,13 +36,13 @@ const (
 
 func serve(ctx context.Context, logger *log.Logger) error {
 	authApp := auth.New(secretKey, tokenExpiration)
-	db := storage.NewPostgresQL(logger, authApp)
+	db := storage.NewPostgresQL(logger)
 	if err := db.Connect(dbURL); err != nil {
 		logger.Fatal("database connecting fail:", err)
 	}
 	defer db.Close()
 
-	application := app.New(logger, db)
+	application := app.New(logger, db, authApp)
 	router := mux.NewRouter()
 
 	handlers := api.New(application, authApp, logger)
