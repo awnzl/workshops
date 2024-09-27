@@ -1,22 +1,37 @@
-SHALL=/bin/bash
+GOBUILD	:= go build
+GOTEST	:= go test
 
-export CGO_ENABLED=0
-export DSN=psql://gouser:gopassword@localhost:5432/gotest
+GOBASE	:= $(shell pwd)
+CMD		:= $(GOBASE)/cmd
+GOBIN	:= $(GOBASE)/bin
 
-default: build
-.PHONY: default
+APPS	:= $(notdir $(wildcard $(CMD)/*))
+TESTS	:= $(GOBASE)/internal/...
+# DEVENV  := $(GOBASE)/.env
 
-build:
-	@ echo "-> build binary ..."
-	@ go build -ldflags "-X main.HashCommit=`git rev-parse HEAD` -X main.BuildStamp=`date -u '+%Y-%m-%d_%I:%M:%S%p'`" -o ./calendar .
+FLAGS	:= -gcflags="all=-N -l"
+
+define BUILD
+$(GOBUILD) $(2) -o $(GOBIN)/$(1) $(CMD)/$(1)/*.go
+
+endef
+
+.PHONY: all
+all: build
+
 .PHONY: build
+build:
+	$(foreach app,$(APPS),$(call BUILD,$(app)))
+	# cp -n -f $(DEVENV) $(GOBIN)
 
-test:
-	@ echo "-> running tests ..."
-	@ CGO_ENABLED=1 go test -race ./...
+.PHONY: delve
+delve:
+	$(foreach app,$(APPS),$(call BUILD,$(app), $(FLAGS)))
+
 .PHONY: test
+test:
+	$(GOTEST) $(TESTS)
 
-lint:
-	@ echo "-> running linters ..."
-	@ golangci-lint run ./...
-.PHONY: lint
+.PHONY: clean
+clean:
+	rm -rf $(GOBIN)/$(BINARY_NAME)

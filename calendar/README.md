@@ -308,7 +308,7 @@ For preparing service to the production lunch it should have:
     - memory used, 
     - cpu used;
 * Organize load testing with `vegetta`;
-* Add support of gracefull shutdown;
+* Add support of graceful shutdown;
 * Check tests coverage, add tests if it low;
 * Use structured logs (with tabs; key: value format);
 * Add enough context information to the error message/logs;
